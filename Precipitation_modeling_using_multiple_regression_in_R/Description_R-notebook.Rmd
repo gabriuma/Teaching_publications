@@ -1,0 +1,642 @@
+---
+title: 'Precipitation modeling using multiple regression in R'
+author: "Gabriel Riutort Mayol, Angel Balaguer Beser, Luis Angel Ruiz Fernandez"
+date: "`r format(Sys.Date())`."
+output:
+  html_document:
+    fig_caption: yes
+    number_sections: yes
+    toc: yes
+    toc_depth: 3
+    toc_float:
+      collapsed: true
+      smooth_scroll: true
+    df_print: paged
+    code_download: yes
+bibliography: references.bib
+---
+
+<!-- To use cross-referencing: -->
+<!-- 1. install bookdown package -->
+<!-- 2. change  "html_document:"  by  "bookdown::html_document2:"  in the header of this script-->
+<!-- 3. click Knit to html_document2 to compile -->
+
+
+```{r setup, echo=FALSE}
+knitr::opts_chunk$set(comment = NA)
+```
+
+This R-notebook is the supplemental material of the teaching publication with the same name *Precipitation modeling using multiple regression in R*. The data used in this notebook can be found at https://github.com/gabriuma/Teaching_publications/tree/master/Precipitation_modeling_using_multiple_regression_in_R.
+
+# Abstract
+
+In this document, we apply multivariate regression methods (linear and
+polynomial estimators) to obtain the best estimation of the seasonal mean precipitation in the Comunitat Valenciana (Spain), using altitude and cartographic coordinates ($X_{UTM}$ and $Y_{UTM}$) as well as their product, as predictors or independent variables. Firstly, some R functions are shown to import, graphically represent and map the data. Then, a first descriptive analysis is done. Several multiple regression models are tested and the explanatory variables selected by analyzing the proportion of variability of the response variable (seasonal mean precipitation) explained by the adjusted regression models. Finally, a study of residuals is done to analyze the performance of each model, and the assumption of linearity (zero mean), normality and homoscedasticity (constant variance) is verified. The main steps followed in this article and applied in R-studio are listed as below:
+
++ Preliminaries: Install and load R-packages, set working directory 
++ Study area, data sets uploading and visualization
++ Multiple regression models: Adjustment and diagnosis plots
+
+
+# Introduction
+
+Rainfall data (daily, monthly, seasonally, annually,.) are gathered in meteorological stations spatially distributed in the
+territory at variable distances. A common problem consists on how to extrapolate those point data to the rest of the territory to
+generate rainfall maps at different scales. The spatial pattern of precipitation is a complex variable that strongly depends on other geographic and topographic factors. For this purpose, multivariate linear regression have been used in this document, in order to predict rainfall in other spatial coordinates of the territory. We focus on analysing an environmental data set
+which contains mean precipitation data from different available meteorological stations in the Valencian Community (CV) and its surroundings, located to the eastern Spanish Mediterranean coast. Such precipitation data comes from the raingauges of the National Institute of Meteorology network (AEMET in spanish), grouped into monthly means for the period of 1960-2005 [@Boronat2010].
+
+The analysis are carried out using the statistical and programming software R [@R2019R], and this practical work serves as a practical introduction to data analysis and spatial data manipulation in R [@bivand2008applied]. In this context "spatial data" refers to data about geographical locations. If you have not worked with R before, you can have a look at a brief introduction to R in [@venables2009introduction].
+
+This document performs a descriptive analysis of the data set, response and input (co-variables) variables, and performs linear regression analysis [@seber2012linear; @Gelman2020regression] on the data. The data set are imported in R and descriptively analyzed showing their histograms and summary statistics. Then, several linear regression analysis are performed to relate a mean seasonal precipitation variable to the input variables, using different functional forms of the input variables.
+
+# Objectives
+
+Once the student reads this document, she/he will be able to:
+
++	Organize and analyze spatial data in R.
++	Interpret the descriptive statistics generated for the different variables, dependent and independent, before applying the regression.
++ Apply descriptive analysis of an environmental data set based on precipitation data, and multivariate regression analysis using R.
++ Select the optimal multivariate polynomial regression function to predict seasonal mean precipitation using geographic and topographic variables.
++	Evaluate the accuracy of the prediction of multivariate lineal regression and multivariate polynomial regression models.
++	Analyze the residuals of a multivariate regression model and verify basic assumptions.
+
+
+# Development
+
+## Preliminaries
+
+**Install R-packages**
+
+If the R packages needed to execute the different operations and computations are not already installed in our computer, we should install them first.
+
+Notice that the following R command lines to install the different packages are commented. If you need to install in your commputer some of the following packages, please uncomment the corresponding command line removing the character #.
+
+```{r }
+#install.packages("rgdal")
+#install.packages("raster")
+#install.packages("RColorBrewer")
+#install.packages("psych")
+```
+
+**Load R-packages**
+
+While an R package only needs to be installed once in the computer system, an R package need to be loaded in every new R session by means of using the R command *library*.
+
+```{r message=FALSE, warn=FALSE, eval=TRUE}
+library(rgdal)
+library(raster) 
+library(RColorBrewer)
+library(psych)
+```
+
+**Set working directory**
+
+In order to facilitate the access to data and results, the standard way to set the current working directory is using the command *setwd* (R uses forward slashes “/” in paths, while Windows uses backward slashes).
+
+```{r }
+# setwd("MyDirectory")
+```
+
+## Study area, data sets uploading and visualization
+
+The study area corresponds to the Valencian Community (CV), Spain, and its surroundings, which is a Mediterranean coastal zone located in eastern
+Spain with an area of 23,255 Km2. It contains a mountainous area where the highest altitudes are about 1800 m. There exists a littoral plain region, principally constituted by floodplains and alluvial fans, and a
+coastline formed by smooth beaches and coastal lagoons.
+
+### Borders of the Valencian Community
+
+The boundaries of the CV are provided by a shape file. If needed, we might have a look at the help page of the R command *readOGR* which loads a shape point file into R [@bivand2008applied]. Notice that the following command line is commented, please uncomment it if you want to consult the command help page.
+
+```{r }
+# help(readOGR)
+```
+
+With the following command line the polygons shape file *cv* containing the borders of the CV is converted to the spatial-polygons R-object *lim_cv*.
+
+```{r results='hide'}
+lim_cv <- readOGR(dsn="Datos_cp4", layer="cv")
+```
+
+A summary of the structure and content of the generated spatial-polygons R-object *lim_cv* can be seen by using the R command *str*. Briefly, the object *lim_cv* is an object of R-class *SpatialPoligonsDataFrame* and has 5 slots: *data*, *polygons*, *plotOrder*, *bbox* and *proj4string*.
+The slot *polygons* contains a list with all the multipolygons (a multipolygon is of R-class *Polygons*). In this case, *lim_cv* contains only one multipolygon, and it is formed by two single polygons (a single polygon is of R-class *Polygon*). The slot *data* contains a table (*data.frame*) with the attributes (variables) associated to every one of the multipolygons. In this case, there is only one attribute, which is the identifier (*PROVIN_ID*) of the multipolygons. The slot *bbox* is a 2 $\times$ 2 matrix with the 4 vertices of the boundary box of the geometrical data. And the slot *proj4string* specifies the coordinate reference system. In this case, no reference system is specified for the coordinates. 
+See @bivand2008applied for a detalied explanation of the structure and manipulation of spatial-class objects in R.
+
+```{r }
+str(lim_cv)
+```
+
+To refer to a specific slot in a Spatial-class object, for example the slot *bbox* in the SpatialPolygonsDataFrame object *lim_cv*, we have to write the name *lim_cv*, followed by the character @ and the name of the slot *bbox*, as follows:
+
+```{r }
+lim_cv@bbox
+
+# summary of the structure and content
+str(lim_cv@bbox)
+```
+
+In Figure \@ref(fig:limit-cv-elev-map), the borders of the CV are plotted superimposed to a elevation map of the area. It consists in a multipolygon with two single polygons that draw the borders of the CV.
+
+### Elevation map
+
+A elevation map of the CV and its surroundings is provided by a raster file. The following command line, by means of the R command *raster*, reads the raster file containing the elevation map and converts it to a raster R-object. With the R command *class*, the class of an object can be consulted. And a summary can be obtained by means of the commad *str*.
+
+```{r, warning=FALSE, message=FALSE}
+ras <- raster("Datos_cp4/mde_100.tif", values=TRUE)
+class(ras)
+```
+
+Figure \@ref(fig:limit-cv-elev-map) shows the elevation map of the CV and its surroundings, with the borders of the CV superimposed.
+
+```{r limit-cv-elev-map, fig.cap="Elevation map and boundaries of the Valencian Community (CV) study area. The color legend represents the elevation in meters.", fig.width=4, fig.height=4, fig.align='center', echo=FALSE}
+
+# plot margin settings (see help(par))
+par(mar= c(3.2, 2.5, 1.5, 0))
+
+# plotting the elevation map
+plot(ras, legend.width = 1.2, cex.axis = 0.8, mgp = c(1.7,0.4,0), xlab="coords.x1", ylab="coords.x2")
+
+# adding the CV limits
+plot(lim_cv, add=TRUE)
+```
+
+
+## Observational data
+
+The observational data set consists in precipitation observations and associated attributes of the observed locations as the spatial coordinates and the elevation. Thus, data set contains mean precipitation data for the period of 1960-2005 in 212 meteorological stations of the CV. Our study considers seasonal temporal scales. Thus, monthly rainfall means were grouped into the following variables: *spring* (spring: March, April, May), *summer* (summer: June, July, August), *autumn* (autumn: September, October, November), and *winter* (winter:
+December, January, February). *annual* contains the mean annual precipitation in each meteorological observatory. 
+
+### Precipitation variables{#subsec-precip-var}
+
+The precipitation variables as well as the spatial coordinates and the elevation of the observed points are provided by a shape file. The points shape file *precip_seasonal* which contains the data is read and converted to the spatial-points R-object *dat* by using the command *readOGR*.
+
+```{r, results='hide', warning=FALSE, message=FALSE}
+dat <- readOGR(dsn="Datos_cp4", layer="precip_seasonal", integer64="warn.loss")
+```
+
+Next we can see a summary of the structure and content of the object *dat*. *dat* is an object of R-class *SpatialPointsDataFrame* and has 5 slots: *data*, *coords.nrs*, *coords*, *bbox* and *proj4string*. The slot *data* contains a table (*data.frame*) with 16 attributes or variables associated to the 212 observations. Among others, it has the seasonal precipitation variables, *annual*, *spring*, *summer*, *autumn* and *winter*, the altitud variable *ALTITUD* of the observed locations, and two spatial coordinates *X* and *Y* of the observed locations. The slot *coords* is a two-column matrix which also contains the two spatial coordinates *X* and *Y* of the observed locations. The slot *bbox* contains the boundary box for the spatial points. And the slot *proj4string* specifies the coordinate reference system.
+
+```{r }
+str(dat)
+```
+
+To refer a specific variable, for example the spring precipitation variable *spring* in the slot *data*, we have to write the name of the *SpatialPointsDataFrame* object *dat* followed by the character @, the name of the slot *data*, the character $ and the name of the variable *spring*, as follows:
+
+```{r }
+dat@data$spring
+```
+
+Next we can see the structure of the variable *spring*, by means of the command *str*, which is a numeric vector with 212 elements, and then we also show a statistical summary of the numerical values of the variable by means of the command *summary*.
+
+```{r }
+str(dat@data$spring)
+summary(dat@data$spring)
+```
+
+In Figure \@ref(fig:data-points) the spring precipitation and altitud variables at the observed locations are mapped.
+
+```{r data-points, fig.cap="Map of the observed locations colored by the spring precipitation (left) and the elevation data (right).", fig.width=9, fig.height=6, fig.align='center'}
+# plot settings (see help(par))
+par(mfrow=c(1,2), mar=c(3.7, 4.1, 2.1, 1.1), mgp=c(1.8,0.6,0))
+
+# plotting the spring precipitation observations
+q1 <- quantile(dat@data$spring, c(0,0.10,0.25,0.40,0.60,0.75,0.90,1))
+br1 <- cut(dat@data$spring, breaks=q1, include.lowest=TRUE)
+plot(dat@coords[ ,1:2], type="p", col=brewer.pal(7,"Blues")[1:7][br1], asp=1, pch=16, xlim=c(600000,900000), xlab="X", ylab="Y")
+
+plot(lim_cv, add=TRUE) # adding the CV limits
+
+# adding a legend for the observations
+legend("bottomright", legend=levels(br1)[7:1], fill=brewer.pal(7,"Blues")[7:1], title= "Spring precipitation", cex=0.8, box.col = "grey", xpd = NA, bty = "n")
+
+# plotting the elevation of the observed points
+q2 <- quantile(dat@data$ALTITUD, c(0,0.10,0.25,0.40,0.60,0.75,0.90,1))
+br2 <- cut(dat@data$ALTITUD, breaks=q2, include.lowest=TRUE)
+plot(dat@coords[ ,1:2], type="p", col=brewer.pal(7,"Oranges")[1:7][br2], asp=1, pch=16, xlim=c(600000,900000), xlab="X", ylab="Y")
+
+plot(lim_cv, add=TRUE) # adding the CV limits
+
+# adding a legend for the elevation
+legend("bottomright", legend=levels(br2)[7:1], fill=brewer.pal(7,"Oranges")[7:1], title= "Elevation", cex=0.8, box.col = "grey", xpd = NA, bty = "n")
+```
+
+
+### Histograms of precipitation variables
+
+Frecuency histograms (Figure \@ref(fig:hist-precip)) of the precipitation variables, *annual*, *spring*, *summer*, *autumn* and *winter*, by means of using the R command *hist*.
+
+```{r hist-precip, fig.cap="Histograms of the precipitation variables.", fig.height=2.2, fig.width=7, message=FALSE, warning=FALSE, fig.align='center'}
+# plot settings (see help(par))
+par(mfrow=c(1,5), mai=c(0.55, 0.4, 0.5, 0), mgp=c(2, 0.5, 0))
+
+# histograms
+hist(dat@data$annual, main="annual", col=grey(0.8))
+hist(dat@data$spring, main="spring", col=grey(0.8), ylab="")
+hist(dat@data$summer, main="summer", col=grey(0.8), ylab="")
+hist(dat@data$autumn, main="autumn", col=grey(0.8), ylab="")
+hist(dat@data$winter, main="winter", col=grey(0.8), ylab="")
+```
+
+Next we show the desriptive statistics of the precipitation variables by means of applying the command *describe*.
+
+```{r }
+describe(dat@data[ ,c("spring","summer","autumn","winter","annual")])[,c("n","mean","median","sd","min","max")]
+```
+
+### Histograms of co-variables
+
+Frecuency histograms (Figure \@ref(fig:hist-covar)) of the altitude variable *ALTITUD* and spatial coordinates *X* and  *Y*.
+
+```{r hist-covar, fig.cap="Histograms of the co-variables.", fig.height=2.2, fig.width=6, message=FALSE, warning=FALSE, fig.align='center'}
+# plot settings (see help(par))
+par(mfrow=c(1,3), mai=c(0.55, 0.4, 0.5, 0.5), mgp=c(2, 0.5, 0))
+
+# histograms
+hist(dat@data$ALTITUD, main="ALTITUDE", col=grey(0.8))
+hist(dat@coords[ ,1], main="X coordinate ", col=grey(0.8), ylab="")
+hist(dat@coords[ ,2], main="Y coordinate ", col=grey(0.8), ylab="")
+```
+
+
+## Multivariate regression models
+
+Mutivariate linear regression (MLR) [@seber2012linear; @Gelman2020regression] aims to fit a parametric linear function from data with some Gaussian noise. Within the MLR procedure, a precipitation variable in a location will be predicted by K continuous attributes in the same location using a linear function, considering the information available at all estimation points.
+The Method of Least Square Value (LSV) is used in this document in order to estimate coefficients of the linear function, at which the sum of the squares of errors between observed and predicted values is taken to be minimum. Polynomial Regression is a model used when the relation between the response variable and independent variables has a curvilinear structure. A Second Order Multiple Polynomial Regression can be expressed as:
+
+$$\begin{align*}
+Y_i = &\: \beta_0 + \beta_1 X_{1i} + \beta_2 X_{2i} + \beta_{11} X^2_{1i} + \beta_{22} X^2_{2i} + \beta_{12} X_{1i} X_{2i} + \epsilon_i,\\
+\epsilon_i \sim &\: \mathrm{Normal}(0,\sigma^2),
+\end{align*}$$
+
+with:
+
+$i=1,\dots,n$, for $n$ observations,
+
+$\epsilon_i$ is the Gaussian noise for the observation $i$ where $\sigma^2$ is the variance of the Gaussian noise,
+
+$\beta_1$ and $\beta_2$ are called as linear effect parameters,
+
+$\beta_{11}$ and $\beta_{22}$ are called as quadratic effect parameters,
+
+$\beta_{12}$ is called as interaction effect parameter.
+
+In this section, some multivariate linear and polynomial regresion models are carried out to learn a function of the input variables from the spring precipitation data variable. We use the QR decomposition method implemented in the command *lm* of the R-package *stats* to fit the regression models. Some graphs (diagnosis plots) are represented using R functions to check if the model residuals $\epsilon_i$ follow a normal distribution (normality hypothesis), with a zero mean (linearity) and constant variance (homoscedasticity).
+
+### Model 1{#sec-model1}
+
+This model relates the spring precipitation variable *spring* to a linear function of the altitude input variable *ALTITUD* and some additive Gaussian noise.
+
+$$\begin{align*}
+Y^{spring}_i = &\: \beta_0 + \beta_1 X^{altitud}_i + \epsilon_i, \\
+\epsilon_i \sim &\: \mathrm{Normal}(0,\sigma^2),
+\end{align*}$$
+with $i=1,\dots,n$, for $n$ observations, and $\epsilon_i$ is the Gaussian noise for the observation $i$ where $\sigma^2$ is the variance of the Gaussian noise.
+
+
+**Model adjustment**
+
+By using the R command *lm*, a linear regression analysis on the spring precipitation variable *spring* as a function of the altitude variable *ALTITUD* is performed. A summary of the results of the fitted model can be seen by means of the R command *summary*.
+
+```{r message=FALSE, warning=FALSE, size='small'}
+m1 <- lm(spring ~ ALTITUD, data=dat@data)
+summary(m1)
+```
+
+The statistic *R-squared* is a measure of the amount of variablity explained by the model. For this model, the *R-squared* resulted around 0.07, which means that this model explains only the small quantity of 7\% of the original variability of the spring precipitation variable. 
+
+Figure \@ref(fig:spring-alitud-m1) shows the model expected spring precipitation and the data points.
+
+```{r spring-alitud-m1, fig.cap="Model expected spring precipitation and the data points (from results provided by model 1).", fig.height=2.8, fig.width=4, message=FALSE, warning=FALSE, fig.align='center'}
+# plot settings (see help(par))
+par(mfrow=c(1,1), mai=c(0.6, 0.6, 0.2, 0.5), cex.lab=0.73, cex.main=0.73, cex.axis=0.73, mgp = c(1.4,0.4,0))
+
+plot(dat@data$ALTITUD, dat@data$spring, type="p", main="", col=grey(0.5), cex=0.7)
+lines(dat@data$ALTITUD, m1$fitted.values, col=4)
+```
+
+
+**Diagnosis plots**
+
+Figure \@ref(fig:hist-resi-m1) shows the histograms of the model residuals and spring precipitation variable.
+
+```{r hist-resi-m1, fig.cap="Histograms of the model residuals (left) and spring precipitation variable (right) (from results provided by model 1).", fig.height=2.2, fig.width=6, message=FALSE, warning=FALSE, fig.align='center'}
+# plot settings (see help(par))
+par(mfrow=c(1,2), mai=c(0.6, 0.6, 0.2, 0.5), mgp=c(2, 0.5, 0), cex.lab=0.73, cex.main=0.73, cex.axis=0.73, mgp = c(1.4,0.4,0))
+
+# histograms
+hist(m1$residuals, breaks=15, main="", col=grey(0.8))
+hist(dat@data$spring, breaks=15, main="", col=grey(0.8), ylab="")
+```
+
+Figure \@ref(fig:plot-resi-m1) shows a plot of the model residuals against the spring precipitation variable. For a optimal fit, model residuals should be distributed randomly around the horizontal zero line. In this case, residuals are far from this optimal situation, which means that there is still much of the spring precipitation variable to be explained by the model, and that the latent linear function of the altitud variable is a poor function proposal.
+
+```{r plot-resi-m1, fig.cap="Plot of the model residuals vs the spring precipitation observations (from results provided by model 1).", fig.height=2.8, fig.width=4, message=FALSE, warning=FALSE, fig.align='center'}
+# plot settings (see help(par))
+par(mfrow=c(1,1), mai=c(0.6, 0.6, 0.2, 0.2), mgp=c(1.5, 0.5, 0), cex.lab=0.75, cex.main=0.75, cex.axis=0.75)
+
+# plot
+plot(dat@data$spring, m1$residuals, asp=1, ylab="residual", cex=0.5)
+abline(h=0, col="blue", lty=2)
+```
+
+### Model 2
+
+This model relates the spring precipitation variable *spring* to a linear function of the altitude variable *ALTITUD* and the spatial coordinates *X* and *Y*.
+
+$$\begin{align*}
+Y^{spring}_i = &\:  \beta_0 + \beta_1 \cdot X^{altitude}_i + \beta_2 \cdot X^{X_{UTM}}_i + \beta_3 \cdot X^{Y_{UTM}}_i + \epsilon_i, \\
+\epsilon_i \sim &\: \mathrm{Normal}(0,\sigma^2).
+\end{align*}$$
+
+with $i=1,\dots,n$, for $n$ observations, and $\epsilon_i$ is the Gaussian noise for the observation $i$ where $\sigma^2$ is the variance of the Gaussian noise.
+
+
+**Model adjustment**
+
+Linear regression analysis on the spring precipitation variable *spring* as a function of the altitude variable *ALTITUD* and the spatial coordinates *X* and *Y*, and a summary of the results of the fitted model. Notice that the spatial coordinates *X* and *Y* are stored in the slot *coords* of the *SpatialPointsDataFrame* object *dat* (*dat@coords*) (Section \@ref(subsec-precip-var)).
+
+```{r message=FALSE, warning=FALSE}
+m2 <- lm( spring ~ ALTITUD + X + Y , data=dat@data)
+summary(m2)
+```
+
+The statistic *R-squared* is a measure of the amount of variability explained by the model. For this model, the *R-squared* results around 0.34 which means that this model explains 34\% of the original variability of the spring precipitation variable, which is an improvement compared to the previous *model 1* in Section \@ref(sec-model1). However, the second geographic coordinate is not statistically significant since its $PR(> \mid t \mid)$ is greater than 0.05.
+
+Figure \@ref(fig:spring-alitud-X-Y-m2) shows the mode expected spring precipitation for each predictor with other predictors fixed to their mean values.
+
+```{r spring-alitud-X-Y-m2, echo=FALSE, fig.align='center', fig.cap="Expected spring precipitation for each predictor with other predictors fixed to their mean values (from results provided by model 2).", fig.height=2.8, fig.width=12, message=FALSE, warning=FALSE}
+
+m2_pred_ALTITUD <- predict(m2, data.frame(ALTITUD=dat@data$ALTITUD, X=mean(dat@data$X), Y=mean(dat@data$Y)))
+
+m2_pred_X <- predict(m2, data.frame(ALTITUD=mean(dat@data$ALTITUD), X=dat@data$X, Y=mean(dat@data$Y)))
+
+m2_pred_Y <- predict(m2, data.frame(ALTITUD=mean(dat@data$ALTITUD), X=mean(dat@data$X), Y=dat@data$Y))
+
+# plot settings (see help(par))
+par(mfrow=c(1,3), mai=c(0.6, 0.6, 0.2, 0.5), cex.lab=1.4, cex.main=1.4, cex.axis=1.3, mgp = c(2.8,0.8,0))
+
+plot(dat@data$ALTITUD, dat@data$spring, type="p", main="", col=grey(0.5), cex=0.7)
+lines(dat@data$ALTITUD, m2_pred_ALTITUD, col=4)
+
+plot(dat@data$X, dat@data$spring, type="p", main="", col=grey(0.5), cex=0.7)
+lines(dat@coords[,1], m2_pred_X, col=4)
+
+plot(dat@data$Y, dat@data$spring, type="p", main="", col=grey(0.5), cex=0.7)
+lines(dat@coords[,2], m2_pred_Y, col=4)
+```
+
+**Diagnosis plots**
+
+Figure \@ref(fig:hist-resi-m2) shows the histograms of model residuals and spring precipitation variable.
+
+```{r hist-resi-m2, fig.cap="Histograms of the model residuals (left) and spring precipitation variable (right) (from results provided by model 2).", fig.height=2.2, fig.width=6, message=FALSE, warning=FALSE, fig.align='center'}
+par(mfrow=c(1,2), mai=c(0.6, 0.6, 0.2, 0.5), mgp=c(2, 0.5, 0), cex.lab=0.73, cex.main=0.73, cex.axis=0.73, mgp = c(1.4,0.4,0))
+
+hist(m2$residuals, breaks=15, main="", col=grey(0.8))
+hist(dat@data$spring, breaks=15, main="", col=grey(0.8), ylab="")
+```
+
+Figure \@ref(fig:plot-resi-m2) shows the model residuals against the spring precipitation variable. An improvement in the distribution of the model residuals compared to the previous *mode 1* can be appreciated. However, the residuals have still a strong systematic behavior, which means that there is still quite much of the spring precipitation variable to be explained by the model.
+
+```{r plot-resi-m2, fig.cap="Plot of the model residuals vs the spring precipitation variable (from results provided by model 2).", fig.height=2.8, fig.width=4, message=FALSE, warning=FALSE, fig.align='center'}
+# plot settings (see help(par))
+par(mfrow=c(1,1), mai=c(0.6, 0.6, 0.2, 0.2), mgp=c(1.5, 0.5, 0), cex.lab=0.75, cex.main=0.75, cex.axis=0.75)
+
+plot(dat@data$spring, m2$residuals, asp=1, ylab="residual", cex=0.5)
+abline(h=0, col="blue", lty=2)
+```
+
+
+### Model 3
+
+This model relates the spring precipitation variable *spring* to a linear function of the altitude input variable *ALTITUD*, the spatial coordinates *X* and *Y*, and the interaction between the spatial coordinates *X* and *Y*.
+
+$$\begin{align*}
+Y^{spring}_i = &\: \beta_0 + \beta_1 \cdot X^{altitude}_i + \beta_2 \cdot X^{X_{UTM}}_i + \beta_3 \cdot X^{Y_{UTM}}_i + \beta_4 \cdot X^{X_{UTM}}_i \cdot X^{Y_{UTM}}_i + \epsilon_i,  \\
+\epsilon_i \sim &\: \mathrm{Normal}(0,\sigma^2).
+\end{align*}$$
+
+with $i=1,\dots,n$, for $n$ observations, and $\epsilon_i$ is the Gaussian noise for the observation $i$ where $\sigma^2$ is the variance of the Gaussian noise.
+
+
+**Model adjustment**
+
+Linear regression analysis on the spring precipitation *spring* as a function of the altitude variable *ALTITUD*, spatial coordinates *X* and *Y*, and the interaction between the spatial coordinates *X* and *Y* and a summary of the results of the fitted model.
+
+```{r message=FALSE, warning=FALSE}
+m3 <- lm( spring ~ ALTITUD + X*Y , data=dat@data)
+summary(m3)
+```
+
+The *R-squared* has improved to 0.45, which means that this model explains 45\% of the original variability of the spring precipitation variable. In this case all the coefficients are statistically significant with a $PR(>\mid t \mid)$ less than 0.001.
+
+Figure \@ref(fig:spring-alitud-X-Y-m3) shows the mode expected spring precipitation for each predictor with other predictors fixed to their mean values.
+
+```{r spring-alitud-X-Y-m3, echo=FALSE, fig.align='center', fig.cap="Expected spring precipitation for each predictor with other predictors fixed to their mean values (from results provided by model 3).", fig.height=2.8, fig.width=12, message=FALSE, warning=FALSE}
+
+m3_pred_ALTITUD <- predict(m3, data.frame(ALTITUD=dat@data$ALTITUD, X=mean(dat@data$X), Y=mean(dat@data$Y)))
+
+m3_pred_X <- predict(m3, data.frame(ALTITUD=mean(dat@data$ALTITUD), X=dat@data$X, Y=mean(dat@data$Y)))
+
+m3_pred_Y <- predict(m3, data.frame(ALTITUD=mean(dat@data$ALTITUD), X=mean(dat@data$X), Y=dat@data$Y))
+
+# plot settings (see help(par))
+par(mfrow=c(1,3), mai=c(0.6, 0.6, 0.2, 0.5), cex.lab=1.4, cex.main=1.4, cex.axis=1.3, mgp = c(2.8,0.8,0))
+
+plot(dat@data$ALTITUD, dat@data$spring, type="p", main="", col=grey(0.5), cex=0.7)
+lines(dat@data$ALTITUD, m3_pred_ALTITUD, col=4)
+
+plot(dat@data$X, dat@data$spring, type="p", main="", col=grey(0.5), cex=0.7)
+lines(dat@coords[,1], m3_pred_X, col=4)
+
+plot(dat@data$Y, dat@data$spring, type="p", main="", col=grey(0.5), cex=0.7)
+lines(dat@coords[,2], m3_pred_Y, col=4)
+```
+
+**Diagnosis plots**
+
+Figure \@ref(fig:hist-resi-m3) shows the histograms of model residuals and spring precipitation variable.
+
+```{r hist-resi-m3, fig.align='center', fig.cap="Histograms of the residuals (left) and spring precipitation variable (right) (from results provided by model 3).", fig.height=2.2, fig.width=6, message=FALSE, warning=FALSE, fig.align='center'}
+par(mfrow=c(1,2), mai=c(0.6, 0.6, 0.2, 0.5), mgp=c(2, 0.5, 0), cex.lab=0.73, cex.main=0.73, cex.axis=0.73, mgp = c(1.4,0.4,0))
+
+hist(m3$residuals, breaks=15, main="", col=grey(0.8))
+hist(dat@data$spring, breaks=15, main="", col=grey(0.8), ylab="")
+```
+
+
+Figure \@ref(fig:plot-resi-m3) shows the model residuals against the spring precipitation variable. The residuals are sligthly closer to the horizontal zero line compared to the previous *model 2*, however they have still a strong systematic behavior, which means that there is still quite much of the spring precipitation variable to be explained by the model.
+
+
+```{r plot-resi-m3, fig.cap="Plot of the model residuals vs the spring precipitation variable (from results provided by model 3).", fig.height=2.8, fig.width=4, message=FALSE, warning=FALSE, fig.align='center'}
+# plot settings (see help(par))
+par(mfrow=c(1,1), mai=c(0.6, 0.6, 0.2, 0.2), mgp=c(1.5, 0.5, 0), cex.lab=0.75, cex.main=0.75, cex.axis=0.75)
+
+plot(dat@data$spring, m3$residuals, asp=1, ylab="residual", cex=0.5)
+abline(h=0, col="blue", lty=2)
+```
+
+
+### Model 4
+
+This model relates the spring precipitation variable *spring* as a function of the altitude variable *ALTITUD*, the spatial coordinates *X* and *Y*, with full interactions.
+
+$$\begin{align*}
+Y^{spring}_i = &\:\beta_0 + \beta_1 \cdot X^{altitude}_i + \beta_2 \cdot X^{X_{UTM}}_i + \beta_3 \cdot X^{Y_{UTM}}_i + \beta_4 \cdot X^{altitude}_i \cdot X^{X_{UTM}}_i \\
++ &\: \beta_5 \cdot X^{altitude}_i \cdot X^{Y_{UTM}}_i + \beta_6 \cdot X^{X_{UTM}}_i \cdot X^{Y_{UTM}}_i + \beta_7 \cdot X^{altitude}_i \cdot X^{X_{UTM}}_i \cdot X^{Y_{UTM}}_i, + \epsilon_i,  \\
+\epsilon_i \sim &\: \mathrm{Normal}(0,\sigma^2).
+\end{align*}$$
+
+with $i=1,\dots,n$, for $n$ observations, and $\epsilon_i$ is the Gaussian noise for the observation $i$ where $\sigma^2$ is the variance of the Gaussian noise.
+
+
+**Model adjustment**
+
+Linear regression analysis on the spring precipitation *spring* as a function of the altitud variable *ALTITUD*, spatial coordinates *X* and *Y*, with full interaction effects, and a summary of the results of the fitted model.
+
+```{r message=FALSE, warning=FALSE}
+m4 <- lm( spring ~ ALTITUD*X*Y , data=dat@data )
+summary(m4)
+```
+
+The *R-squared* has improved to 0.50 which means that this model explains 50\% of the original variability of the spring precipitation variable and all the coefficients are statistically significant.
+
+Figure \@ref(fig:spring-alitud-X-Y-m4) shows the mode expected spring precipitation for each predictor with other predictors fixed to their mean values.
+
+```{r spring-alitud-X-Y-m4, echo=FALSE, fig.align='center', fig.cap="Expected spring precipitation for each predictor with other predictors fixed to their mean values (from results provided by model 4).", fig.height=2.8, fig.width=12, message=FALSE, warning=FALSE}
+
+m4_pred_ALTITUD <- predict(m4, data.frame(ALTITUD=dat@data$ALTITUD, X=mean(dat@data$X), Y=mean(dat@data$Y)))
+
+m4_pred_X <- predict(m4, data.frame(ALTITUD=mean(dat@data$ALTITUD), X=dat@data$X, Y=mean(dat@data$Y)))
+
+m4_pred_Y <- predict(m4, data.frame(ALTITUD=mean(dat@data$ALTITUD), X=mean(dat@data$X), Y=dat@data$Y))
+
+# plot settings (see help(par))
+par(mfrow=c(1,3), mai=c(0.6, 0.6, 0.2, 0.5), cex.lab=1.4, cex.main=1.4, cex.axis=1.3, mgp = c(2.8,0.8,0))
+
+plot(dat@data$ALTITUD, dat@data$spring, type="p", main="", col=grey(0.5), cex=0.7)
+lines(dat@data$ALTITUD, m4_pred_ALTITUD, col=4)
+
+plot(dat@data$X, dat@data$spring, type="p", main="", col=grey(0.5), cex=0.7)
+lines(dat@coords[,1], m4_pred_X, col=4)
+
+plot(dat@data$Y, dat@data$spring, type="p", main="", col=grey(0.5), cex=0.7)
+lines(dat@coords[,2], m4_pred_Y, col=4)
+```
+
+**Diagnosis plots**
+
+Figure \@ref(fig:hist-resi-m4) shows the histograms of model residuals and spring precipitation variable.
+
+```{r hist-resi-m4, fig.align='center', fig.cap="Histograms of the residuals (left) and spring precipitation variable (right) (from results provided by model 4).", fig.height=2.2, fig.width=6, message=FALSE, warning=FALSE, fig.align='center'}
+par(mfrow=c(1,2), mai=c(0.6, 0.6, 0.2, 0.5), mgp=c(2, 0.5, 0), cex.lab=0.73, cex.main=0.73, cex.axis=0.73, mgp = c(1.4,0.4,0))
+
+hist(m4$residuals, breaks=15, main="", col=grey(0.8))
+hist(dat@data$spring, breaks=15, main="", col=grey(0.8), ylab="")
+```
+
+Figure \@ref(fig:plot-resi-m4) shows the model residuals against the *spring* variable. A slightly improvement can be seen compared to the previous *model 3*.
+
+```{r plot-resi-m4, fig.cap="Plot of the model residuals vs the spring precipitation variable (from results provided by model 4).", fig.height=2.8, fig.width=4, message=FALSE, warning=FALSE, fig.align='center'}
+# plot settings (see help(par))
+par(mfrow=c(1,1), mai=c(0.6, 0.6, 0.2, 0.2), mgp=c(1.5, 0.5, 0), cex.lab=0.75, cex.main=0.75, cex.axis=0.75)
+
+plot(dat@data$spring, m4$residuals, asp=1, ylab="residual", cex=0.5)
+abline(h=0, col="blue", lty=2)
+```
+
+
+### Model 5
+
+This model relates the summer precipitation variable *summer* as a linear function of the altitude variable *altitud*, the spatial coordinates *X* and *Y*, and the interaction between the spatial coordinates *X* and *Y*.
+
+$$\begin{align*}
+Y^{summer}_i = &\: \beta_0 + \beta_1 \cdot X^{altitude}_i + \beta_2 \cdot X^{X_{UTM}}_i + \beta_3 \cdot X^{Y_{UTM}}_i + \beta_4 \cdot X^{X_{UTM}}_i \cdot X^{Y_{UTM}}_i + \epsilon_i,  \\
+\epsilon_i \sim &\: \mathrm{Normal}(0,\sigma^2).
+\end{align*}$$
+
+with $i=1,\dots,n$, for $n$ observations, and $\epsilon_i$ is the Gaussian noise for the observation $i$ where $\sigma^2$ is the variance of the Gaussian noise.
+
+
+**Model adjustment**
+
+Linear regression analysis on the summer precipitation *summer* as a function of the altitude variable *ALTITUD*, spatial coordinates *X* and *Y*, and the interaction between the spatial coordinates *X* and *Y*, and a summary of the results of the fitted model.
+
+```{r message=FALSE, warning=FALSE}
+m5 <- lm(summer ~ ALTITUD + X*Y, data=dat@data )
+summary(m5)
+```
+
+The *R-squared* for this model is 0.85 which means that this model explains 85\% of the original variability of summer precipitation variable. In this case, all the coefficients are also statistically significant.
+
+Figure \@ref(fig:summer-alitud-X-Y-m5) shows the mode expected summer precipitation for each predictor with other predictors fixed to their mean values.
+
+```{r summer-alitud-X-Y-m5, echo=FALSE, fig.align='center', fig.cap="Expected spring precipitation for each predictor with other predictors fixed to their mean values (from results provided by model 4).", fig.height=2.8, fig.width=12, message=FALSE, warning=FALSE}
+
+m5_pred_ALTITUD <- predict(m5, data.frame(ALTITUD=dat@data$ALTITUD, X=mean(dat@data$X), Y=mean(dat@data$Y)))
+
+m5_pred_X <- predict(m5, data.frame(ALTITUD=mean(dat@data$ALTITUD), X=dat@data$X, Y=mean(dat@data$Y)))
+
+m5_pred_Y <- predict(m5, data.frame(ALTITUD=mean(dat@data$ALTITUD), X=mean(dat@data$X), Y=dat@data$Y))
+
+# plot settings (see help(par))
+par(mfrow=c(1,3), mai=c(0.6, 0.6, 0.2, 0.5), cex.lab=1.4, cex.main=1.4, cex.axis=1.3, mgp = c(2.8,0.8,0))
+
+plot(dat@data$ALTITUD, dat@data$summer, type="p", main="", col=grey(0.5), cex=0.7)
+lines(dat@data$ALTITUD, m5_pred_ALTITUD, col=4)
+
+plot(dat@data$X, dat@data$summer, type="p", main="", col=grey(0.5), cex=0.7)
+lines(dat@coords[,1], m5_pred_X, col=4)
+
+plot(dat@data$Y, dat@data$summer, type="p", main="", col=grey(0.5), cex=0.7)
+lines(dat@coords[,2], m5_pred_Y, col=4)
+```
+
+**Diagnosis plots**
+
+Figure \@ref(fig:hist-resi-m5) shows the histograms of model residuals and summer precipitation variable.
+
+```{r hist-resi-m5, fig.align='center', fig.cap="Histograms of the residuals (left) and winter precipitation variable (right) (from results provided by model 5).", fig.height=2.2, fig.width=6, message=FALSE, warning=FALSE, fig.align='center'}
+par(mfrow=c(1,2), mai=c(0.6, 0.6, 0.2, 0.5), mgp=c(2, 0.5, 0), cex.lab=0.73, cex.main=0.73, cex.axis=0.73, mgp = c(1.4,0.4,0))
+
+hist(m5$residuals, breaks=15, main="", col=grey(0.8))
+hist(dat@data$summer, breaks=15, main="", col=grey(0.8), ylab="")
+```
+
+Figure \@ref(fig:plot-resi-m5) shows the model residuals against the summer precipitation variable.The residuals are almost randomly distributed around the horizontal zero line, which means that there are not much left of the summer precipitation variable to be explained by the model.
+
+```{r plot-resi-m5, fig.cap="Plot of the model residuals vs the summer precipitation variable (from results provided by model 5).", fig.height=2.8, fig.width=4, message=FALSE, warning=FALSE, fig.align='center'}
+# plot settings (see help(par))
+par(mfrow=c(1,1), mai=c(0.6, 0.6, 0.2, 0.2), mgp=c(1.5, 0.5, 0), cex.lab=0.75, cex.main=0.75, cex.axis=0.75)
+
+plot(dat@data$summer, m5$residuals, asp=1, ylab="residual", cex=0.5)
+abline(h=0, col="blue", lty=2)
+```
+
+
+From previous Figure \@ref(fig:plot-resi-m5), we can see an anomalous observation which is quite far from the learned function. This corresponds to the 'BARRACAS' observed location. The recorded precipitation seems to be a typo because it is very different from all its neighbours locations.
+
+
+```{r }
+dat@data[m5$residuals<(-40),]
+```
+
+
+## Assignment
+
+Formulate, fit and make the diagnosis of the following model which relates the autumn precipitation variable *autumn* to the altitude variable *altitud*, the spatial coordinates *X* and *Y*, and the interaction between the spatial coordinates *X* and *Y*.
+
+$$\begin{align*}
+Y^{autumn}_i = &\:\beta_0 + \beta_1 \cdot X^{altitud}_i + \beta_2 \cdot X^{X_{UTM}}_i + \beta_3 \cdot X^{Y_{UTM}}_i + \beta_4 \cdot X^{X_{UTM}}_i \cdot X^{Y_{UTM}}_i + \epsilon_i, \\
+\epsilon_i \sim &\: \mathrm{Normal}(0,\sigma^2).
+\end{align*}$$
+
+with $i=1,\dots,n$, for $n$ observations, and $\epsilon_i$ is the Gaussian noise for the observation $i$ where $\sigma^2$ is the variance of the Gaussian noise.
+
+
+# Conclussion
+
+Multiple regression should be rejected as an unreliable model to interpolate the rainfall variable in spring, using altitude and geographical coordinates as independent variables if residuals are not treated in further analysis. It has been shown how the inclusion of new terms (quadratic and interaction) can increase the percentage of variance explained by the model. However, the residuals do not meet the normality hypotheses with an average equal to zero and constant variance. Thus, we should correct the residuals of that model using more independent variables in the regression model. If this is not possible, other techniques should be used to estimate spring precipitation, which will be the subject of other documents in this series.
+
+Instead, summer model explains adequately the 85% of the rainfall variability with altitude, $X_{UTM}$ and $Y_{UTM}$, considering the interaction between these geographical coordinates, being all coefficients in the model statistically significant. The analysis of the residues has allowed detecting the existence of outliers in the sample. This study proves that precipitation in the Valencian Community (Spain) has a seasonal behavior, which could be predicted in summer taking into account the altitude of each point and its geographical position. This document has served to describe the use of some functions of the R program to calculate and analyze all these results, not only the statistical ones, but also to capture the information provided by raster files and shape files.
+
+# References
